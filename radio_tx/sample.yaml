@@ -1,23 +1,16 @@
 sample:
-  name: ESB ptx Sample
+  description: Hello World sample, the simplest Zephyr
+    application
+  name: hello world
+common:
+    tags: introduction
+    integration_platforms:
+      - native_posix
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "Hello World! (.*)"
 tests:
-  sample.esb.ptx:
-    filter: CONFIG_UART_CONSOLE and CONFIG_SERIAL_SUPPORT_INTERRUPT
-    harness: keyboard
-    integration_platforms:
-      - nrf52dk_nrf52832
-      - nrf52840dk_nrf52840
-      - nrf52dk_nrf52810
-    platform_allow: nrf52dk_nrf52832 nrf52840dk_nrf52840 nrf52dk_nrf52810
-    tags: samples console
-  sample.esb.ptx.build:
-    build_only: true
-    integration_platforms:
-      - nrf52dk_nrf52832
-      - nrf52833dk_nrf52833
-      - nrf52840dk_nrf52840
-      - nrf52dk_nrf52810
-      - nrf5340dk_nrf5340_cpunet
-    platform_allow: nrf52dk_nrf52832 nrf52833dk_nrf52833 nrf52840dk_nrf52840
-      nrf52dk_nrf52810 nrf5340dk_nrf5340_cpunet
-    tags: ci_build
+  sample.basic.helloworld:
+    tags: introduction
