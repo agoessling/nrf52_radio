@@ -1,0 +1,9 @@
+source "Kconfig.zephyr"
+
+menu "Serial Radio: Transmitter"
+
+config RADIO_TX_APP_LOG_LEVEL
+	int "Log level for the radio_tx"
+	default 4
+
+endmenu

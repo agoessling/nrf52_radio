@@ -1,7 +1,6 @@
 sample:
-  description: Hello World sample, the simplest Zephyr
-    application
-  name: hello world
+  description: Serial Radio Transmitter
+  name: radio_tx
 common:
     tags: introduction
     integration_platforms:
