@@ -13,6 +13,7 @@
 #define TX_MAX_PKT_LEN 248
 #define TX_RETRANSMIT_DELAY_US 600
 #define TX_RETRANSMIT_COUNT 3
+BUILD_ASSERT(TX_MAX_PKT_LEN <= CONFIG_ESB_MAX_PAYLOAD_LENGTH, "TX_PKT_LEN too big.");
 
 // UART defines
 #define UART uart0
@@ -26,9 +27,6 @@ LOG_MODULE_REGISTER(radio_tx, CONFIG_RADIO_TX_APP_LOG_LEVEL);
 typedef struct {
   atomic_t rx_overflow;
   atomic_t pkt_overflow;
-  atomic_t poll_fail;
-  atomic_t data_not_available;
-  atomic_t queue_fail;
   atomic_t other;
 } ErrorCount;
 
@@ -63,6 +61,20 @@ static struct k_poll_event g_poll_events[NUM_PIPES] = {
     K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_MSGQ_DATA_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY,
                                     &g_rx_event_queue_1, 0),
 };
+
+typedef struct {
+  struct esb_payload payload;
+  uint32_t write_index;
+} TxPayload;
+
+typedef enum {
+  kWaitStateRadio,
+  kWaitStateUart,
+} WaitState;
+
+typedef struct {
+  uint32_t read_index;
+} UartEventReadState;
 
 static void UartCallback(const struct device *uart, struct uart_event *event, void *user_data) {
   // TODO: Get rid of hardcoded pipe.
@@ -234,35 +246,54 @@ void main(void) {
     return;
   }
 
-  struct esb_payload tx_payload = {
-      .noack = false,
+  TxPayload tx_payloads[NUM_PIPES] = {
+      {.payload = {.pipe = 0, .noack = false}, .write_index = 0},
+      {.payload = {.pipe = 1, .noack = false}, .write_index = 0},
   };
-  (void)tx_payload;
 
-  // TODO: Get rid of hardcoded pipe.
-  const uint32_t pipe = 0;
-  struct k_msgq *const event_queue = g_rx_event_queue[pipe];
+  UartEventReadState read_states[NUM_PIPES] = {
+      {.read_index = 0},
+      {.read_index = 0},
+  };
 
+  WaitState wait_state = kWaitStateUart;
+  k_timeout_t timeout = K_FOREVER;
   while (true) {
-    if (k_poll(g_poll_events, ARRAY_SIZE(g_poll_events), K_FOREVER) < 0) {
+    // Wait on message queues.
+    int ret = k_poll(g_poll_events, ARRAY_SIZE(g_poll_events), timeout);
+    if (ret < 0 && ret != -EAGAIN) {
       atomic_inc(&g_stats.errors.other);
       goto reset_poll_events;
     }
 
-    if (g_poll_events[0].state != K_POLL_STATE_MSGQ_DATA_AVAILABLE) {
-      atomic_inc(&g_stats.errors.other);
+    // Determine highest priority pipe with data.
+    int32_t active_pipe = -1;
+    for (uint32_t i = 0; i < NUM_PIPES; ++i) {
+      if (g_poll_events[i].state == K_POLL_STATE_MSGQ_DATA_AVAILABLE) {
+        active_pipe = i;
+        break;
+      }
+    }
+
+    // No data.
+    if (active_pipe < 0) {
       goto reset_poll_events;
     }
 
+    struct k_msgq *const event_queue = g_rx_event_queue[active_pipe];
     struct uart_event_rx event;
     if (k_msgq_get(event_queue, &event, K_NO_WAIT) < 0) {
       atomic_inc(&g_stats.errors.other);
       goto reset_poll_events;
     }
 
-    UartRxSlabs *const rx_slabs = &g_uart_rx_slabs[pipe];
+    UartRxSlabs *const rx_slabs = &g_uart_rx_slabs[active_pipe];
     atomic_ptr_set(&rx_slabs->read_slab, event.buf);
     atomic_add(&g_stats.rx_bytes, event.len);
+
+    (void)tx_payloads;
+    (void)read_states;
+    (void)wait_state;
 
     // Copy data into esb payload.
     // const uint8_t *const rx_data = rx_packet.event.buf + rx_packet.event.offset;

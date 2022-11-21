@@ -7,6 +7,8 @@
     "files.associations": {
         "clock_control.h": "c",
         "nrf_clock_control.h": "c",
-        "esb.h": "c"
+        "esb.h": "c",
+        "util.h": "c",
+        "util_macro.h": "c"
     }
 }
