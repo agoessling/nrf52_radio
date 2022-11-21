@@ -10,6 +10,8 @@ def main():
   parser.add_argument('-p', '--port', required=True, help='Serial device.')
   parser.add_argument('-b', '--baud', required=True, type=int, help='Baud rate.')
   parser.add_argument('--total_bytes', type=int, default=10000, help='Total bytes for test.')
+  parser.add_argument('--max_delay', type=float, default=0.01,
+                      help='Maximum random delay between byte bursts.')
 
   args = parser.parse_args()
 
@@ -21,7 +23,7 @@ def main():
       assert (ser.write(output) == len)
       byte_count += len
 
-      delay = random.uniform(0, 0.1)
+      delay = random.uniform(0, args.max_delay)
       time.sleep(delay)
 
 

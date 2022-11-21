@@ -8,11 +8,12 @@
 
 // Common defines.
 #define NUM_PIPES 2
+#define NUM_POLL_EVENTS (NUM_PIPES + 1)
 
 // TX radio defines
-#define TX_MAX_PKT_LEN 248
+#define TX_MAX_PKT_LEN 246
 #define TX_RETRANSMIT_DELAY_US 600
-#define TX_RETRANSMIT_COUNT 3
+#define TX_RETRANSMIT_COUNT 1
 BUILD_ASSERT(TX_MAX_PKT_LEN <= CONFIG_ESB_MAX_PAYLOAD_LENGTH, "TX_PKT_LEN too big.");
 
 // UART defines
@@ -26,13 +27,15 @@ LOG_MODULE_REGISTER(radio_tx, CONFIG_RADIO_TX_APP_LOG_LEVEL);
 
 typedef struct {
   atomic_t rx_overflow;
-  atomic_t pkt_overflow;
+  atomic_t queue_overflow;
+  atomic_t tx_failed;
   atomic_t other;
 } ErrorCount;
 
 typedef struct {
   ErrorCount errors;
   atomic_t rx_bytes;
+  atomic_t tx_packets;
 } Stats;
 
 static Stats g_stats;
@@ -55,7 +58,12 @@ static struct k_msgq *const g_rx_event_queue[NUM_PIPES] = {
     &g_rx_event_queue_1,
 };
 
-static struct k_poll_event g_poll_events[NUM_PIPES] = {
+// Raised with a boolean result that indicates that at least one TX pkt has succeeded or failed.
+static struct k_poll_signal g_tx_radio_signal = K_POLL_SIGNAL_INITIALIZER(g_tx_radio_signal);
+
+static struct k_poll_event g_poll_events[NUM_POLL_EVENTS] = {
+    K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_SIGNAL, K_POLL_MODE_NOTIFY_ONLY,
+                                    &g_tx_radio_signal, 0),
     K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_MSGQ_DATA_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY,
                                     &g_rx_event_queue_0, 0),
     K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_MSGQ_DATA_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY,
@@ -103,7 +111,7 @@ static void UartCallback(const struct device *uart, struct uart_event *event, vo
       break;
     case UART_RX_RDY:
       if (k_msgq_put(event_queue, &event->data.rx, K_NO_WAIT) < 0) {
-        atomic_inc(&g_stats.errors.pkt_overflow);
+        atomic_inc(&g_stats.errors.queue_overflow);
         k_msgq_purge(event_queue);
       }
       break;
@@ -117,7 +125,28 @@ static void UartCallback(const struct device *uart, struct uart_event *event, vo
 }
 
 static void EsbHandler(const struct esb_evt *event) {
-  (void)event;
+  switch (event->evt_id) {
+    case ESB_EVENT_TX_SUCCESS:
+      k_poll_signal_raise(&g_tx_radio_signal, true);
+      break;
+
+    case ESB_EVENT_TX_FAILED:
+      if (esb_pop_tx() < 0) {
+        atomic_inc(&g_stats.errors.other);
+      }
+      int ret = esb_start_tx();
+      if (ret < 0 && ret != -ENODATA) {
+        atomic_inc(&g_stats.errors.other);
+      }
+      atomic_inc(&g_stats.errors.tx_failed);
+
+      k_poll_signal_raise(&g_tx_radio_signal, false);
+      break;
+
+    case ESB_EVENT_RX_RECEIVED:
+      atomic_inc(&g_stats.errors.other);
+      break;
+  }
 }
 
 static int SetupUart(const struct device *uart) {
@@ -257,9 +286,25 @@ void main(void) {
   };
 
   WaitState wait_state = kWaitStateUart;
-  k_timeout_t timeout = K_FOREVER;
+  k_timeout_t timeout;
+
   while (true) {
-    // Wait on message queues.
+    // Setup polling based on what we are waiting for.
+    switch (wait_state) {
+      case kWaitStateUart:
+        timeout = K_FOREVER;
+        g_poll_events[0].type = K_POLL_TYPE_IGNORE;
+        break;
+      case kWaitStateRadio:
+        timeout = K_MSEC(10);
+        g_poll_events[0].type = K_POLL_TYPE_SIGNAL;
+        break;
+    }
+
+    // Always default back to waiting on UART RX events.
+    wait_state = kWaitStateUart;
+
+    // Wait for poll event.
     int ret = k_poll(g_poll_events, ARRAY_SIZE(g_poll_events), timeout);
     if (ret < 0 && ret != -EAGAIN) {
       atomic_inc(&g_stats.errors.other);
@@ -268,9 +313,9 @@ void main(void) {
 
     // Determine highest priority pipe with data.
     int32_t active_pipe = -1;
-    for (uint32_t i = 0; i < NUM_PIPES; ++i) {
+    for (uint32_t i = 1; i < NUM_POLL_EVENTS; ++i) {
       if (g_poll_events[i].state == K_POLL_STATE_MSGQ_DATA_AVAILABLE) {
-        active_pipe = i;
+        active_pipe = i - 1;
         break;
       }
     }
@@ -301,7 +346,7 @@ void main(void) {
     uint8_t *const dest = payload->payload.data + payload->write_index;
     uint8_t *const src = event.buf + event.offset + read_state->read_index;
     const size_t len = MIN(write_available, read_available);
-    memcpy(dest, src, len);  
+    memcpy(dest, src, len);
 
     payload->write_index += len;
     read_state->read_index += len;
@@ -316,14 +361,25 @@ void main(void) {
 
     // Attempt to put payload on ESB FIFO.
     payload->payload.length = payload->write_index;
+    ret = esb_write_payload(&payload->payload);
 
-    payload->write_index = 0;
-    atomic_add(&g_stats.rx_bytes, payload->payload.length);
+    if (ret == -ENOMEM) {
+      // There is a potential for a race condition here as the signal could be raised (and a FIFO
+      // spot created) between attempting to write to the ESB FIFO above and here. This will only be
+      // an issue if a single ESB callback was executed in response to CONFIG_ESB_TX_FIFO_SIZE
+      // transfers (draining the entire FIFO).  In this rare case the poll timeout will occur.
+      g_tx_radio_signal.signaled = 0;
+      wait_state = kWaitStateRadio;
+    } else if (ret == 0) {
+      payload->write_index = 0;
+      atomic_inc(&g_stats.tx_packets);
+      atomic_add(&g_stats.rx_bytes, payload->payload.length);
+    } else {
+      atomic_inc(&g_stats.errors.other);
+    }
 
-    (void)wait_state;
-
-reset_poll_events:
-    for (uint32_t i = 0; i < NUM_PIPES; ++i) {
+  reset_poll_events:
+    for (uint32_t i = 0; i < NUM_POLL_EVENTS; ++i) {
       g_poll_events[i].state = K_POLL_STATE_NOT_READY;
     }
   }
