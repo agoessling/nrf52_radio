@@ -1,5 +1,6 @@
 #include <esb.h>
 #include <zephyr/drivers/clock_control/nrf_clock_control.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -13,7 +14,8 @@
 // TX radio defines
 #define TX_MAX_PKT_LEN 246
 #define TX_RETRANSMIT_DELAY_US 600
-#define TX_RETRANSMIT_COUNT 1
+#define TX_RETRANSMIT_COUNT 2
+#define TX_TIMEOUT_US 10000
 BUILD_ASSERT(TX_MAX_PKT_LEN <= CONFIG_ESB_MAX_PAYLOAD_LENGTH, "TX_PKT_LEN too big.");
 
 // UART defines
@@ -23,12 +25,17 @@ BUILD_ASSERT(TX_MAX_PKT_LEN <= CONFIG_ESB_MAX_PAYLOAD_LENGTH, "TX_PKT_LEN too bi
 #define UART_NUM_SLABS 8
 #define UART_EVENT_QUEUE_LEN 20
 
+// LED defines
+#define LED_STATUS 0
+#define LED_ERROR 1
+
 LOG_MODULE_REGISTER(radio_tx, CONFIG_RADIO_TX_APP_LOG_LEVEL);
 
 typedef struct {
   atomic_t rx_overflow;
   atomic_t queue_overflow;
   atomic_t tx_failed;
+  atomic_t tx_timeout;
   atomic_t other;
 } ErrorCount;
 
@@ -62,12 +69,17 @@ static struct k_msgq *const g_rx_event_queue[NUM_PIPES] = {
 static struct k_poll_signal g_tx_radio_signal = K_POLL_SIGNAL_INITIALIZER(g_tx_radio_signal);
 
 static struct k_poll_event g_poll_events[NUM_POLL_EVENTS] = {
-    K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_SIGNAL, K_POLL_MODE_NOTIFY_ONLY,
-                                    &g_tx_radio_signal, 0),
+    K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_SIGNAL, K_POLL_MODE_NOTIFY_ONLY, &g_tx_radio_signal,
+                                    0),
     K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_MSGQ_DATA_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY,
                                     &g_rx_event_queue_0, 0),
     K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_MSGQ_DATA_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY,
                                     &g_rx_event_queue_1, 0),
+};
+
+static struct gpio_dt_spec g_leds[] = {
+    GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios),
+    GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios),
 };
 
 typedef struct {
@@ -146,6 +158,47 @@ static void EsbHandler(const struct esb_evt *event) {
     case ESB_EVENT_RX_RECEIVED:
       atomic_inc(&g_stats.errors.other);
       break;
+  }
+}
+
+static int SetLed(unsigned int led, bool value) {
+  if (led >= ARRAY_SIZE(g_leds)) {
+    return -1;
+  }
+
+  gpio_port_pins_t mask = 1 << g_leds[led].pin;
+  gpio_port_value_t val = !value << g_leds[led].pin;
+
+  gpio_port_set_masked_raw(g_leds[led].port, mask, val);
+  return 0;
+}
+
+static int SetupLeds(void) {
+  for (uint32_t i = 0; i < ARRAY_SIZE(g_leds); ++i) {
+    struct gpio_dt_spec *const led = &g_leds[i];
+
+    if (!device_is_ready(led->port)) {
+      LOG_ERR("LED port not ready.");
+      return -1;
+    }
+
+    SetLed(i, false);
+
+    if (gpio_pin_configure_dt(led, GPIO_OUTPUT) < 0) {
+      LOG_ERR("Could not set LED GPIO to output.");
+      return -1;
+    }
+  }
+  return 0;
+}
+
+void HandleErrorLed(void) {
+  if (atomic_get(&g_stats.errors.rx_overflow) != 0 ||
+      atomic_get(&g_stats.errors.queue_overflow) != 0 ||
+      atomic_get(&g_stats.errors.tx_timeout) != 0 || atomic_get(&g_stats.errors.other) != 0) {
+    SetLed(LED_ERROR, true);
+  } else {
+    SetLed(LED_ERROR, false);
   }
 }
 
@@ -275,6 +328,11 @@ void main(void) {
     return;
   }
 
+  if (SetupLeds() < 0) {
+    atomic_inc(&g_stats.errors.other);
+    return;
+  };
+
   TxPayload tx_payloads[NUM_PIPES] = {
       {.payload = {.pipe = 0, .noack = false}, .write_index = 0},
       {.payload = {.pipe = 1, .noack = false}, .write_index = 0},
@@ -289,14 +347,17 @@ void main(void) {
   k_timeout_t timeout;
 
   while (true) {
+    HandleErrorLed();
+
     // Setup polling based on what we are waiting for.
     switch (wait_state) {
       case kWaitStateUart:
         timeout = K_FOREVER;
         g_poll_events[0].type = K_POLL_TYPE_IGNORE;
+        SetLed(LED_STATUS, false);
         break;
       case kWaitStateRadio:
-        timeout = K_MSEC(10);
+        timeout = K_USEC(TX_TIMEOUT_US);
         g_poll_events[0].type = K_POLL_TYPE_SIGNAL;
         break;
     }
@@ -305,58 +366,80 @@ void main(void) {
     wait_state = kWaitStateUart;
 
     // Wait for poll event.
-    int ret = k_poll(g_poll_events, ARRAY_SIZE(g_poll_events), timeout);
-    if (ret < 0 && ret != -EAGAIN) {
+    int ret = k_poll(g_poll_events, NUM_POLL_EVENTS, timeout);
+    if (ret == -EAGAIN) {
+      atomic_inc(&g_stats.errors.tx_timeout);
+    } else if (ret < 0) {
       atomic_inc(&g_stats.errors.other);
       goto reset_poll_events;
     }
 
-    // Determine highest priority pipe with data.
+    SetLed(LED_STATUS, true);
+
+    // Determine highest priority pipe with UART RX events.
     int32_t active_pipe = -1;
+    bool has_uart_rx_event = false;
     for (uint32_t i = 1; i < NUM_POLL_EVENTS; ++i) {
       if (g_poll_events[i].state == K_POLL_STATE_MSGQ_DATA_AVAILABLE) {
         active_pipe = i - 1;
+        has_uart_rx_event = true;
         break;
       }
     }
 
-    // No data.
+    // If no UART RX events look for any pending payloads with bytes.
     if (active_pipe < 0) {
-      goto reset_poll_events;
+      for (uint32_t i = 0; i < NUM_PIPES; ++i) {
+        if (tx_payloads[i].write_index != 0) {
+          active_pipe = i;
+          break;
+        }
+      }
     }
 
-    // Get event.
-    struct k_msgq *const event_queue = g_rx_event_queue[active_pipe];
-    struct uart_event_rx event;
-    if (k_msgq_peek(event_queue, &event) < 0) {
+    // Nothing to do.  Should never be reached.
+    if (active_pipe < 0) {
       atomic_inc(&g_stats.errors.other);
       goto reset_poll_events;
     }
 
-    // Signal to publisher which slab we are reading.
-    UartRxSlabs *const rx_slabs = &g_uart_rx_slabs[active_pipe];
-    atomic_ptr_set(&rx_slabs->read_slab, event.buf);
-
-    // Write event data to payload.
+    // Active payload.
     TxPayload *const payload = &tx_payloads[active_pipe];
-    UartEventReadState *const read_state = &read_states[active_pipe];
 
-    const size_t write_available = TX_MAX_PKT_LEN - payload->write_index;
-    const size_t read_available = event.len - read_state->read_index;
-    uint8_t *const dest = payload->payload.data + payload->write_index;
-    uint8_t *const src = event.buf + event.offset + read_state->read_index;
-    const size_t len = MIN(write_available, read_available);
-    memcpy(dest, src, len);
-
-    payload->write_index += len;
-    read_state->read_index += len;
-
-    // Queued event has been fully read.  Pop from queue.
-    if (read_state->read_index == event.len) {
-      if (k_msgq_get(event_queue, &event, K_NO_WAIT) < 0) {
+    if (has_uart_rx_event) {
+      // Get event.
+      struct k_msgq *const event_queue = g_rx_event_queue[active_pipe];
+      struct uart_event_rx event;
+      if (k_msgq_peek(event_queue, &event) < 0) {
         atomic_inc(&g_stats.errors.other);
+        goto reset_poll_events;
       }
-      read_state->read_index = 0;
+
+      // Signal to publisher which slab we are reading.
+      UartRxSlabs *const rx_slabs = &g_uart_rx_slabs[active_pipe];
+      atomic_ptr_set(&rx_slabs->read_slab, event.buf);
+
+      // Write event data to payload.
+      UartEventReadState *const read_state = &read_states[active_pipe];
+
+      const size_t write_available = TX_MAX_PKT_LEN - payload->write_index;
+      const size_t read_available = event.len - read_state->read_index;
+      uint8_t *const dest = payload->payload.data + payload->write_index;
+      uint8_t *const src = event.buf + event.offset + read_state->read_index;
+      const size_t len = MIN(write_available, read_available);
+
+      memcpy(dest, src, len);
+
+      payload->write_index += len;
+      read_state->read_index += len;
+
+      // Queued event has been fully read.  Pop from queue.
+      if (read_state->read_index == event.len) {
+        if (k_msgq_get(event_queue, &event, K_NO_WAIT) < 0) {
+          atomic_inc(&g_stats.errors.other);
+        }
+        read_state->read_index = 0;
+      }
     }
 
     // Attempt to put payload on ESB FIFO.
