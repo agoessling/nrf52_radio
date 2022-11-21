@@ -280,29 +280,50 @@ void main(void) {
       goto reset_poll_events;
     }
 
+    // Get event.
     struct k_msgq *const event_queue = g_rx_event_queue[active_pipe];
     struct uart_event_rx event;
-    if (k_msgq_get(event_queue, &event, K_NO_WAIT) < 0) {
+    if (k_msgq_peek(event_queue, &event) < 0) {
       atomic_inc(&g_stats.errors.other);
       goto reset_poll_events;
     }
 
+    // Signal to publisher which slab we are reading.
     UartRxSlabs *const rx_slabs = &g_uart_rx_slabs[active_pipe];
     atomic_ptr_set(&rx_slabs->read_slab, event.buf);
-    atomic_add(&g_stats.rx_bytes, event.len);
 
-    (void)tx_payloads;
-    (void)read_states;
+    // Write event data to payload.
+    TxPayload *const payload = &tx_payloads[active_pipe];
+    UartEventReadState *const read_state = &read_states[active_pipe];
+
+    const size_t write_available = TX_MAX_PKT_LEN - payload->write_index;
+    const size_t read_available = event.len - read_state->read_index;
+    uint8_t *const dest = payload->payload.data + payload->write_index;
+    uint8_t *const src = event.buf + event.offset + read_state->read_index;
+    const size_t len = MIN(write_available, read_available);
+    memcpy(dest, src, len);  
+
+    payload->write_index += len;
+    read_state->read_index += len;
+
+    // Queued event has been fully read.  Pop from queue.
+    if (read_state->read_index == event.len) {
+      if (k_msgq_get(event_queue, &event, K_NO_WAIT) < 0) {
+        atomic_inc(&g_stats.errors.other);
+      }
+      read_state->read_index = 0;
+    }
+
+    // Attempt to put payload on ESB FIFO.
+    payload->payload.length = payload->write_index;
+
+    payload->write_index = 0;
+    atomic_add(&g_stats.rx_bytes, payload->payload.length);
+
     (void)wait_state;
 
-    // Copy data into esb payload.
-    // const uint8_t *const rx_data = rx_packet.event.buf + rx_packet.event.offset;
-    // tx_payload.length = rx_packet.event.len;
-    // tx_payload.pipe = rx_packet.pipe;
-    // memcpy(tx_payload.data, rx_data, rx_packet.event.len);
-
 reset_poll_events:
-    for (uint32_t i = 0; i < ARRAY_SIZE(g_poll_events); ++i) {
+    for (uint32_t i = 0; i < NUM_PIPES; ++i) {
       g_poll_events[i].state = K_POLL_STATE_NOT_READY;
     }
   }
