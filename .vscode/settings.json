@@ -2,7 +2,8 @@
     "C_Cpp.default.configurationProvider": "nrf-connect",
     "nrf-connect.toolchain.path": "${nrf-connect.toolchain:2.1.2}",
     "nrf-connect.applications": [
-        "${workspaceFolder}/radio_tx"
+        "${workspaceFolder}/radio_tx",
+        "${workspaceFolder}/radio_rx"
     ],
     "files.associations": {
         "clock_control.h": "c",
@@ -10,5 +11,6 @@
         "esb.h": "c",
         "util.h": "c",
         "util_macro.h": "c"
-    }
+    },
+    "nrf-connect.topdir": "${nrf-connect.sdk:2.1.2}"
 }

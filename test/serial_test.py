@@ -19,7 +19,7 @@ def main():
     byte_count = 0
     while byte_count < args.total_bytes:
       len = min(args.total_bytes - byte_count, random.randrange(1, 1000))
-      output = random.randbytes(len)
+      output = bytes((x % 256 for x in range(byte_count, byte_count + len)))
       assert (ser.write(output) == len)
       byte_count += len
 
