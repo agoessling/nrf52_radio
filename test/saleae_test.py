@@ -70,6 +70,10 @@ def get_stats(tx_data: np.ndarray, rx_data: np.ndarray, tx_timestamps: np.ndarra
       rx_index += 1
       continue
 
+    if np.any(rx_data[rx_index + 4:rx_index + 8] == _SYNC_BYTE):
+      rx_index += 1
+      continue
+
     rx_pkt_vals[rx_pkt_index] = rx_data[rx_index + 4:rx_index + 8].view('>u4')[0]
     rx_pkt_timestamps[rx_pkt_index] = rx_timestamps[rx_index + 7]
 

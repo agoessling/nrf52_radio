@@ -14,7 +14,7 @@ LOG_MODULE_REGISTER(radio_tx, CONFIG_RADIO_TX_APP_LOG_LEVEL);
 
 // TX radio defines
 #define TX_MAX_PKT_LEN RADIO_MAX_PKT_LEN
-#define TX_TIMEOUT_US 10000
+#define TX_TIMEOUT_US 20000
 
 // UART defines
 #define UART uart0
