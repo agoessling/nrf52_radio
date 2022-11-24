@@ -20,7 +20,7 @@ LOG_MODULE_REGISTER(radio_tx, CONFIG_RADIO_TX_APP_LOG_LEVEL);
 #define UART uart0
 #define UART_BAUD 921600
 #define UART_TIMEOUT_US 500
-#define UART_NUM_SLABS 8
+#define UART_NUM_SLABS 4
 #define UART_EVENT_QUEUE_LEN 50
 
 // LED defines
@@ -29,6 +29,7 @@ LOG_MODULE_REGISTER(radio_tx, CONFIG_RADIO_TX_APP_LOG_LEVEL);
 
 typedef struct {
   atomic_t rx_overflow;
+  atomic_t rx_flush;
   atomic_t queue_overflow;
   atomic_t tx_failed;
   atomic_t tx_timeout;
@@ -296,7 +297,7 @@ void main(void) {
       struct k_msgq *const event_queue = g_rx_event_queue[active_pipe];
       struct uart_event_rx event;
       if (k_msgq_peek(event_queue, &event) < 0) {
-        atomic_inc(&g_stats.errors.other);
+        atomic_inc(&g_stats.errors.rx_flush);
         goto reset_poll_events;
       }
 
@@ -321,7 +322,7 @@ void main(void) {
       // Queued event has been fully read.  Pop from queue.
       if (read_state->read_index == event.len) {
         if (k_msgq_get(event_queue, &event, K_NO_WAIT) < 0) {
-          atomic_inc(&g_stats.errors.other);
+          atomic_inc(&g_stats.errors.rx_flush);
         }
         read_state->read_index = 0;
       }

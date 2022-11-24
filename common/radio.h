@@ -2,10 +2,11 @@
 #include <zephyr/drivers/clock_control/nrf_clock_control.h>
 #include <zephyr/sys/notify.h>
 
-#define RADIO_MAX_PKT_LEN 248
+#define RADIO_MAX_PKT_LEN 252
 #define RADIO_NUM_PIPES 2
 #define RADIO_RETRANSMIT_DELAY_US 600
 #define RADIO_RETRANSMIT_COUNT 2
+#define RADIO_TX_POWER ESB_TX_POWER_NEG40DBM
 
 BUILD_ASSERT(RADIO_MAX_PKT_LEN <= CONFIG_ESB_MAX_PAYLOAD_LENGTH, "RADIO_MAX_PKT_LEN too big.");
 BUILD_ASSERT(RADIO_NUM_PIPES > 0, "Too few radio pipes.");
@@ -45,7 +46,7 @@ static int SetupEsb(enum esb_mode mode, const esb_event_handler handler) {
       .event_handler = handler,
       .bitrate = ESB_BITRATE_1MBPS,
       .crc = ESB_CRC_16BIT,
-      .tx_output_power = ESB_TX_POWER_4DBM,
+      .tx_output_power = RADIO_TX_POWER,
       .retransmit_delay = RADIO_RETRANSMIT_DELAY_US,
       .retransmit_count = RADIO_RETRANSMIT_COUNT,
       .tx_mode = ESB_TXMODE_AUTO,

@@ -5,6 +5,15 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Python: Saleae test",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "args": ["-p", "/dev/ttyUSB0", "-d", "0.1", "--kbps", "300", "--max_size", "2000", "--pause"],
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
       "type": "nrf-connect",
       "request": "launch",
       "name": "Launch active build configuration",
