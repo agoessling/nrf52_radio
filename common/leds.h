@@ -3,12 +3,18 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 
+// LED defines
+#define LED_STATUS 0
+#define LED_ERROR 1
+
 static struct gpio_dt_spec g_leds[] = {
     GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios),
     GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios),
+    GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios),
+    GPIO_DT_SPEC_GET(DT_ALIAS(led3), gpios),
 };
 
-static int SetLed(unsigned int led, bool value) {
+static inline int SetLed(unsigned int led, bool value) {
   if (led >= ARRAY_SIZE(g_leds)) {
     return -1;
   }
@@ -20,7 +26,7 @@ static int SetLed(unsigned int led, bool value) {
   return 0;
 }
 
-static int SetupLeds(void) {
+static inline int SetupLeds(void) {
   for (uint32_t i = 0; i < ARRAY_SIZE(g_leds); ++i) {
     struct gpio_dt_spec *const led = &g_leds[i];
 

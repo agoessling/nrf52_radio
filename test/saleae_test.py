@@ -11,6 +11,10 @@ import serial
 
 _TX_CH = 0
 _RX_CH = 1
+_DEBUG_CH1 = 2
+_DEBUG_CH2 = 3
+_DEBUG_CH3 = 4
+_DEBUG_CH4 = 5
 _SYNC_BYTE = 0xAA
 _SYNC_WORD = 0xAAAAAAAA
 
@@ -207,7 +211,7 @@ def main():
 
   with automation.Manager.connect() as manager:
     device_config = automation.LogicDeviceConfiguration(
-        enabled_digital_channels=[_TX_CH, _RX_CH],
+        enabled_digital_channels=[_TX_CH, _RX_CH, _DEBUG_CH1, _DEBUG_CH2, _DEBUG_CH3, _DEBUG_CH4],
         digital_sample_rate=10_000_000,
     )
 
