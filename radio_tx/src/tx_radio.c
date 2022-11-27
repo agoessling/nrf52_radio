@@ -19,7 +19,7 @@ typedef struct {
 
 typedef struct {
   struct k_sem tx_sem;  // Semaphore indicating TX FIFO is available.
-  atomic_t tx_failed;  // Flag indicating TX failed and FIFO should be flushed.
+  atomic_t tx_failed_flag;  // Flag indicating TX failed and FIFO should be flushed.
   atomic_t tx_attempts;  // Total TX attempts.
   atomic_t tx_pkts;  // Total successful packets.
   RadioHandlerErrors errors;
@@ -31,7 +31,7 @@ static RadioGlobalState g_radio_state;
 static void EsbHandler(const struct esb_evt *event) {
   switch (event->evt_id) {
     case ESB_EVENT_TX_FAILED:
-      atomic_set(&g_radio_state.tx_failed, true);
+      atomic_set(&g_radio_state.tx_failed_flag, true);
       atomic_inc(&g_radio_state.errors.tx_failed);
 
     // Fall through intended.
@@ -44,6 +44,7 @@ static void EsbHandler(const struct esb_evt *event) {
       }
       k_sem_give(&g_radio_state.tx_sem);
 
+      // Signal transmission finished.
       SetLed(LED_STATUS, false);
       break;
     case ESB_EVENT_RX_RECEIVED:
@@ -99,7 +100,7 @@ int RadioInit(void) {
   // Radio TX FIFO is set to 1.
   if (k_sem_init(&g_radio_state.tx_sem, 1, 1) < 0) return -1;
 
-  atomic_set(&g_radio_state.tx_failed, false);
+  atomic_set(&g_radio_state.tx_failed_flag, false);
 
   memset(&g_radio_state.errors, 0, sizeof(g_radio_state.errors));
 
@@ -147,15 +148,13 @@ void RadioTxThread(const RadioTxConfig *config, RadioState *state, void *unused_
       continue;
     }
 
-    SetLed(LED_STATUS, true);
-
     // Read any newly available data into payload without waiting.
     if (ReadAllAvailable(state, config->input_data_pipe) < 0) {
       atomic_inc(&state->stats.errors.other);
     }
 
     // If a failed transmit has occurred flush the TX FIFO and clear the flag.
-    if (atomic_clear(&g_radio_state.tx_failed)) {
+    if (atomic_clear(&g_radio_state.tx_failed_flag)) {
       esb_flush_tx();
     }
 
@@ -168,5 +167,8 @@ void RadioTxThread(const RadioTxConfig *config, RadioState *state, void *unused_
     } else {
       atomic_inc(&state->stats.errors.other);
     }
+
+    // Signal transmission ongoing.
+    SetLed(LED_STATUS, true);
   }
 }
