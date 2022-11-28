@@ -127,8 +127,13 @@ void main(void) {
   // Set priority to background allowing other threads to start.
   k_thread_priority_set(k_current_get(), THREAD_MAIN_PRIORITY);
 
+  bool running_led = false;
   while (true) {
-    k_msleep(200);
+    k_msleep(500);
+
+    // Toggle running LED.
+    running_led = !running_led;
+    SetLed(LED_RUNNING, running_led);
 
     // Set error LED based on state of threads.
     bool error_status = false;

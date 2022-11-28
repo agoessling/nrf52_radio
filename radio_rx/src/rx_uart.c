@@ -18,7 +18,7 @@ static void UartCallback(const struct device *uart, struct uart_event *event, Ua
     case UART_TX_DONE:
       atomic_add(&state->stats.tx_bytes, event->data.tx.len);
 
-      SetLed(LED_STATUS, false);
+      SetLed(LED_RADIO_STATUS, false);
 
       if (k_sem_count_get(&state->tx_done_sem) != 0) {
         atomic_inc(&state->stats.errors.tx_multiple_callbacks);

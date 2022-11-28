@@ -4,8 +4,9 @@
 #include <zephyr/logging/log.h>
 
 // LED defines
-#define LED_STATUS 0
+#define LED_RADIO_STATUS 0
 #define LED_ERROR 1
+#define LED_RUNNING 3
 
 static struct gpio_dt_spec g_leds[] = {
     GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios),

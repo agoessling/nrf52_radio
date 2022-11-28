@@ -6,10 +6,10 @@
     },
     "configurePresets": [
         {
-            "name": "build",
+            "name": "dk_build",
             "displayName": "Build for nRF52840 DK NRF52840",
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build",
+            "binaryDir": "${sourceDir}/dk_build",
             "cacheVariables": {
                 "NCS_TOOLCHAIN_VERSION": "NONE",
                 "BOARD": "nrf52840dk_nrf52840",

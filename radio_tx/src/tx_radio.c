@@ -45,7 +45,7 @@ static void EsbHandler(const struct esb_evt *event) {
       k_sem_give(&g_radio_state.tx_sem);
 
       // Signal transmission finished.
-      SetLed(LED_STATUS, false);
+      SetLed(LED_RADIO_STATUS, false);
       break;
     case ESB_EVENT_RX_RECEIVED:
       atomic_inc(&g_radio_state.errors.other);
@@ -169,6 +169,6 @@ void RadioTxThread(const RadioTxConfig *config, RadioState *state, void *unused_
     }
 
     // Signal transmission ongoing.
-    SetLed(LED_STATUS, true);
+    SetLed(LED_RADIO_STATUS, true);
   }
 }

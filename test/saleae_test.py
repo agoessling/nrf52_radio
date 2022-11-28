@@ -269,7 +269,7 @@ def main():
   parser.add_argument('-b', '--baud', nargs='+', type=int, default=None, help='Baud rate.')
   parser.add_argument('-d', '--duration', type=float, default=3.0, help='Duration of test.')
   parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output.')
-  parser.add_argument('--max_interval', type=float, default=0.01,
+  parser.add_argument('--max_interval', type=float, default=0.02,
                       help='Maximum interval between byte bursts.')
   parser.add_argument('--max_size', type=int, default=1000, help='Maximum bursts size in bytes.')
   parser.add_argument('--kbps', type=float,

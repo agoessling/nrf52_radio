@@ -34,7 +34,7 @@ static void EsbHandler(const struct esb_evt *event) {
   switch (event->evt_id) {
     case ESB_EVENT_RX_RECEIVED:
       atomic_inc(&g_radio_state.stats.rx_packets);
-      SetLed(LED_STATUS, true);
+      SetLed(LED_RADIO_STATUS, true);
       k_sem_give(&g_radio_state.rx_sem);
       break;
     case ESB_EVENT_TX_SUCCESS:
