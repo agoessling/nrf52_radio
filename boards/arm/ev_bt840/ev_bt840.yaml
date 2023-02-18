@@ -1,0 +1,20 @@
+identifier: ev_bt840 
+name: EV-BT840
+type: mcu
+arch: arm
+ram: 256
+flash: 1024
+toolchain:
+  - zephyr
+  - gnuarmemb
+  - xtools
+supported:
+  - counter
+  - gpio
+  - i2c
+  - pwm
+  - spi
+  - usb_cdc
+  - usb_device
+  - watchdog
+  - netif:openthread
