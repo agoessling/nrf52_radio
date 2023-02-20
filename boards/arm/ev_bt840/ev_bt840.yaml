@@ -1,5 +1,8 @@
-identifier: ev_bt840 
-name: EV-BT840
+# Copyright (c) 2023 Nordic Semiconductor ASA
+# SPDX-License-Identifier: Apache-2.0
+
+identifier: ev_bt840
+name: ev_bt840
 type: mcu
 arch: arm
 ram: 256
@@ -8,13 +11,3 @@ toolchain:
   - zephyr
   - gnuarmemb
   - xtools
-supported:
-  - counter
-  - gpio
-  - i2c
-  - pwm
-  - spi
-  - usb_cdc
-  - usb_device
-  - watchdog
-  - netif:openthread
