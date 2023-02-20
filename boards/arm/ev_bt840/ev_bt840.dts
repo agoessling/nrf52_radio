@@ -1,23 +1,15 @@
-/*
- * Copyright (c) 2017 Linaro Limited
- *
- * SPDX-License-Identifier: Apache-2.0
- */
+// Copyright (c) 2023 Nordic Semiconductor ASA
+// SPDX-License-Identifier: Apache-2.0
 
 /dts-v1/;
 #include <nordic/nrf52840_qiaa.dtsi>
 #include "ev_bt840-pinctrl.dtsi"
 
 / {
-	model = "Fanstel EV-BT840";
-	compatible = "fanstel,ev_BT840";
+	model = "ev_bt840";
+	compatible = "fanstel,ev-bt840";
 
 	chosen {
-		zephyr,console = &uart0;
-		zephyr,shell-uart = &uart0;
-		zephyr,uart-mcumgr = &uart0;
-		zephyr,bt-mon-uart = &uart0;
-		zephyr,bt-c2h-uart = &uart0;
 		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
 		zephyr,code-partition = &slot0_partition;
@@ -26,15 +18,15 @@
 	leds {
 		compatible = "gpio-leds";
 		led0: led_0 {
-			gpios = <&gpio0 17 GPIO_ACTIVE_LOW>;
+			gpios = <&gpio1 0 GPIO_ACTIVE_LOW>;
 			label = "Green LED 0";
 		};
 		led1: led_1 {
-			gpios = <&gpio1 0 GPIO_ACTIVE_LOW>;
+			gpios = <&gpio1 11 GPIO_ACTIVE_LOW>;
 			label = "Green LED 1";
 		};
 		led2: led_2 {
-			gpios = <&gpio0 19 GPIO_ACTIVE_LOW>;
+			gpios = <&gpio1 12 GPIO_ACTIVE_LOW>;
 			label = "Green LED 2";
 		};
 		led3: led_3 {
@@ -43,40 +35,19 @@
 		};
 	};
 
-	buttons {
-		compatible = "gpio-keys";
-		button0: button_0 {
-			gpios = <&gpio0 11 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
-			label = "Push button switch 0";
-		};
-		button1: button_1 {
-			gpios = <&gpio0 14 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
-			label = "Push button switch 1";
-		};
-		button2: button_2 {
-			gpios = <&gpio0 15 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
-			label = "Push button switch 2";
-		};
-		button3: button_3 {
-			gpios = <&gpio0 16 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
-			label = "Push button switch 3";
-		};
+	nrf_radio_fem: radio_fem {
+		compatible = "skyworks,sky66112-11", "generic-fem-two-ctrl-pins";
+		ctx-gpios = <&gpio0 17 GPIO_ACTIVE_HIGH>;
+		crx-gpios = <&gpio0 19 GPIO_ACTIVE_HIGH>;
+		cps-gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
+		chl-gpios = <&gpio0 8 GPIO_ACTIVE_HIGH>;
 	};
 
-	/* These aliases are provided for compatibility with samples */
 	aliases {
 		led0 = &led0;
 		led1 = &led1;
 		led2 = &led2;
 		led3 = &led3;
-		sw0 = &button0;
-		sw1 = &button1;
-		sw2 = &button2;
-		sw3 = &button3;
-		bootloader-led0 = &led0;
-		mcuboot-button0 = &button0;
-		mcuboot-led0 = &led0;
-		watchdog0 = &wdt0;
 	};
 };
 
@@ -110,7 +81,6 @@
 };
 
 &flash0 {
-
 	partitions {
 		compatible = "fixed-partitions";
 		#address-cells = <1>;
@@ -118,38 +88,23 @@
 
 		boot_partition: partition@0 {
 			label = "mcuboot";
-			reg = <0x00000000 0x0000C000>;
+			reg = <0x0 0xc000>;
 		};
 		slot0_partition: partition@c000 {
 			label = "image-0";
-			reg = <0x0000C000 0x00067000>;
+			reg = <0xc000 0x72000>;
 		};
-		slot1_partition: partition@73000 {
+		slot1_partition: partition@7e000 {
 			label = "image-1";
-			reg = <0x00073000 0x00067000>;
+			reg = <0x7e000 0x72000>;
 		};
-		scratch_partition: partition@da000 {
+		scratch_partition: partition@f0000 {
 			label = "image-scratch";
-			reg = <0x000da000 0x0001e000>;
+			reg = <0xf0000 0xa000>;
 		};
-
-		/*
-		 * The flash starting at 0x000f8000 and ending at
-		 * 0x000fffff is reserved for use by the application.
-		 */
-
-		/*
-		 * Storage partition will be used by FCB/LittleFS/NVS
-		 * if enabled.
-		 */
-		storage_partition: partition@f8000 {
+		storage_partition: partition@fa000 {
 			label = "storage";
-			reg = <0x000f8000 0x00008000>;
+			reg = <0xfa000 0x6000>;
 		};
 	};
-};
-
-zephyr_udc0: &usbd {
-	compatible = "nordic,nrf-usbd";
-	status = "okay";
 };
