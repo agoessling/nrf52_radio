@@ -2,6 +2,7 @@
 
 #include <esb.h>
 #include <zephyr/drivers/clock_control/nrf_clock_control.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/notify.h>
 
@@ -41,7 +42,7 @@ int SetupEsb(enum esb_mode mode, const esb_event_handler handler) {
       .event_handler = handler,
       .bitrate = ESB_BITRATE_1MBPS,
       .crc = ESB_CRC_16BIT,
-      .tx_output_power = RADIO_TX_POWER,
+      .tx_output_power = RADIO_TX_POWER_DBM,
       .retransmit_delay = RADIO_RETRANSMIT_DELAY_US,
       .retransmit_count = RADIO_RETRANSMIT_COUNT,
       .tx_mode = ESB_TXMODE_AUTO,
@@ -78,6 +79,43 @@ int SetupEsb(enum esb_mode mode, const esb_event_handler handler) {
     LOG_ERR("Could not enable pipes.");
     return -1;
   }
+
+  // Setup CHL and CPS pins of FEM if present.
+  #if DT_NODE_HAS_PROP(DT_NODELABEL(nrf_radio_fem), chl_gpios)
+  {
+    const struct gpio_dt_spec chl_pin = GPIO_DT_SPEC_GET(DT_NODELABEL(nrf_radio_fem), chl_gpios);
+
+    if (!gpio_is_ready_dt(&chl_pin)) {
+      LOG_ERR("CHL GPIO port not ready.");
+      return -1;
+    }
+
+    gpio_pin_set_dt(&chl_pin, 1);
+
+    if (gpio_pin_configure_dt(&chl_pin, GPIO_OUTPUT) < 0) {
+      LOG_ERR("Could not set CHL GPIO to output.");
+      return -1;
+    }
+  }
+  #endif
+
+  #if DT_NODE_HAS_PROP(DT_NODELABEL(nrf_radio_fem), cps_gpios)
+  {
+    const struct gpio_dt_spec cps_pin = GPIO_DT_SPEC_GET(DT_NODELABEL(nrf_radio_fem), cps_gpios);
+
+    if (!gpio_is_ready_dt(&cps_pin)) {
+      LOG_ERR("CPS GPIO port not ready.");
+      return -1;
+    }
+
+    gpio_pin_set_dt(&cps_pin, 0);
+
+    if (gpio_pin_configure_dt(&cps_pin, GPIO_OUTPUT) < 0) {
+      LOG_ERR("Could not set CPS GPIO to output.");
+      return -1;
+    }
+  }
+  #endif
 
   return 0;
 }
