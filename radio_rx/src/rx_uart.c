@@ -4,7 +4,7 @@
 
 #include <zephyr/drivers/uart.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/zephyr.h>
+#include <zephyr/kernel.h>
 
 LOG_MODULE_REGISTER(rx_uart, CONFIG_LOG_LEVEL_DEFAULT);
 
