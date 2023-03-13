@@ -6,4 +6,8 @@ config RADIO_TX_APP_LOG_LEVEL
 	int "Log level for the radio_tx"
 	default 4
 
+config RADIO_GPIO_ENABLE_SW
+	bool "Utilize GPIO as enable switch for primary channel transmit."
+	default false
+
 endmenu

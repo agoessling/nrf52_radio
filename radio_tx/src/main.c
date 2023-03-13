@@ -62,12 +62,14 @@ void main(void) {
           .baud = 921600,
           .rx_timeout_us = 500,
           .output_pipe = g_pipes[0],
+          .primary = true,
       },
       {
           .uart = DEVICE_DT_GET(DT_NODELABEL(uart1)),
           .baud = 921600,
           .rx_timeout_us = 500,
           .output_pipe = g_pipes[1],
+          .primary = false,
       },
   };
 

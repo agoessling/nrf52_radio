@@ -1,0 +1,9 @@
+/ {
+  inputs: inputs {
+    compatible = "gpio-keys";
+    tx_enable_sw: enable_sw {
+      gpios = <&gpio0 11 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+      label = "Enable switch for primary TX.";
+    };
+  };
+};

@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -10,8 +11,16 @@ LOG_MODULE_REGISTER(tx_uart, CONFIG_LOG_LEVEL_DEFAULT);
 
 #include "common/leds.h"
 
+static int UartEnable(UartState *state) {
+  return uart_rx_enable(state->config->uart, state->rx_bufs[state->write_buf_index],
+                        UART_RX_BUF_LEN, state->config->rx_timeout_us);
+}
+
 static void UartCallback(const struct device *uart, struct uart_event *event, UartState *state) {
   switch (event->type) {
+    case UART_RX_DISABLED:
+      atomic_inc(&state->stats.errors.rx_disabled);
+      // Fall through intended.
     case UART_RX_BUF_REQUEST:
       if (++state->write_buf_index >= UART_RX_NUM_BUFS) {
         state->write_buf_index = 0;
@@ -20,15 +29,23 @@ static void UartCallback(const struct device *uart, struct uart_event *event, Ua
       uint8_t *const next_buf = state->rx_bufs[state->write_buf_index];
 
       // Next buffer is being updated to what was last read in uart thread indicating an overrun is
-      // possible. Purge event queue and skip over what is currently being read.
+      // possible. Purge event queue and skip over what is currently being read.  Note this will
+      // also occur when a deluge of RX_DISABLE events arrive.
       if (next_buf == atomic_ptr_get(&state->read_buf)) {
         atomic_inc(&state->stats.errors.isr_overflow);
         k_msgq_purge(&state->rx_event_queue);
       }
 
-      if (uart_rx_buf_rsp(uart, next_buf, UART_RX_BUF_LEN) < 0) {
-        atomic_inc(&state->stats.errors.other);
+      if (event->type == UART_RX_BUF_REQUEST) {
+        const int ret = uart_rx_buf_rsp(uart, next_buf, UART_RX_BUF_LEN);
+        // -EBUSY is sometimes returned after a restart due to UART_RX_DISABLED.
+        if (ret < 0 && ret != -EBUSY) {
+          atomic_inc(&state->stats.errors.other);
+        }
+      } else {
+        UartEnable(state);
       }
+
       break;
     case UART_RX_RDY:
       atomic_add(&state->stats.rx_bytes, event->data.rx.len);
@@ -37,17 +54,21 @@ static void UartCallback(const struct device *uart, struct uart_event *event, Ua
         k_msgq_purge(&state->rx_event_queue);
       }
       break;
+    case UART_RX_STOPPED:
+      atomic_inc(&state->stats.errors.rx_stopped);
+      break;
     case UART_TX_DONE:
     case UART_TX_ABORTED:
-    case UART_RX_DISABLED:
-    case UART_RX_STOPPED:
       atomic_inc(&state->stats.errors.other);
+      break;
     case UART_RX_BUF_RELEASED:
       break;
   }
 }
 
 static int UartInit(const UartConfig *config, UartState *state) {
+  state->config = config;
+
   state->write_buf_index = 0;
   state->read_buf = NULL;
 
@@ -55,6 +76,21 @@ static int UartInit(const UartConfig *config, UartState *state) {
               sizeof(state->_rx_event_queue_buf[0]), ARRAY_SIZE(state->_rx_event_queue_buf));
 
   memset(&state->stats, 0, sizeof(state->stats));
+
+// Setup enable switch GPIO.
+#ifdef CONFIG_RADIO_GPIO_ENABLE_SW
+  const struct gpio_dt_spec enable_sw = GPIO_DT_SPEC_GET(DT_NODELABEL(tx_enable_sw), gpios);
+
+  if (!gpio_is_ready_dt(&enable_sw)) {
+    LOG_ERR("Enable switch port not ready.");
+    return -1;
+  }
+
+  if (gpio_pin_configure_dt(&enable_sw, GPIO_INPUT) < 0) {
+    LOG_ERR("Could not set enable switch to input.");
+    return -1;
+  }
+#endif
 
   const struct uart_config uart_config = {
       .baudrate = config->baud,
@@ -79,7 +115,7 @@ static int UartInit(const UartConfig *config, UartState *state) {
     return -1;
   }
 
-  if (uart_rx_enable(config->uart, state->rx_bufs[0], UART_RX_BUF_LEN, config->rx_timeout_us) < 0) {
+  if (UartEnable(state) < 0) {
     LOG_ERR("Could not enable uart rx.");
     return -1;
   }
@@ -109,6 +145,14 @@ void UartRxThread(const UartConfig *config, UartState *state, void *unused3) {
 
     // Signal to ISR what buffer is currently being read.
     atomic_ptr_set(&state->read_buf, event.buf);
+
+#ifdef CONFIG_RADIO_GPIO_ENABLE_SW
+    // Discard buffer if this is the primary channel and switch is not enabled.
+    const struct gpio_dt_spec enable_sw = GPIO_DT_SPEC_GET(DT_NODELABEL(tx_enable_sw), gpios);
+    if (config->primary && gpio_pin_get_dt(&enable_sw) != 1) {
+      continue;
+    }
+#endif
 
     // If pipe can't accept bytes flush it.
     if (k_pipe_write_avail(config->output_pipe) < event.len) {

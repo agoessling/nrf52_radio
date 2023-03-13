@@ -16,6 +16,7 @@ typedef struct {
   uint32_t baud;
   int32_t rx_timeout_us;
   struct k_pipe *output_pipe;
+  bool primary;
 } UartConfig;
 
 typedef struct {
@@ -23,6 +24,8 @@ typedef struct {
     atomic_t isr_overflow;
     atomic_t queue_overflow;
     atomic_t pipe_overflow;
+    atomic_t rx_stopped;
+    atomic_t rx_disabled;
     atomic_t other;
   } errors;
   atomic_t rx_bytes;
@@ -36,6 +39,7 @@ typedef struct {
   struct uart_event_rx _rx_event_queue_buf[UART_RX_EVENT_QUEUE_LEN];
   struct k_msgq rx_event_queue;
 
+  const UartConfig *config;
   UartStats stats;
 } UartState;
 
