@@ -17,6 +17,20 @@
       "request": "launch",
       "config": "/home/agoessling/nrf52_radio/radio_tx/build",
       "runToEntryPoint": "main"
+    },
+    {
+      "type": "nrf-connect",
+      "request": "launch",
+      "name": "Launch bt840xe_breakout_build",
+      "config": "${workspaceFolder}/radio_rx/bt840xe_breakout_build",
+      "runToEntryPoint": "main"
+    },
+    {
+      "type": "nrf-connect",
+      "request": "launch",
+      "name": "Launch ev_bt840_build",
+      "config": "${workspaceFolder}/radio_tx/ev_bt840_build",
+      "runToEntryPoint": "main"
     }
   ]
 }

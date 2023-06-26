@@ -1,0 +1,118 @@
+// Copyright (c) 2023 Nordic Semiconductor ASA
+// SPDX-License-Identifier: Apache-2.0
+
+/dts-v1/;
+#include <nordic/nrf52840_qiaa.dtsi>
+#include "bt840xe_breakout-pinctrl.dtsi"
+
+/ {
+	model = "bt840xe_breakout";
+	compatible = "magpie,bt840xe-breakout";
+
+	chosen {
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,code-partition = &slot0_partition;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		led0: led_0 {
+			gpios = <&gpio0 7 GPIO_ACTIVE_LOW>;
+			label = "Yellow/Green LED 0";
+		};
+		led1: led_1 {
+			gpios = <&gpio0 4 GPIO_ACTIVE_LOW>;
+			label = "Red LED 1";
+		};
+		led2: led_2 {
+			gpios = <&gpio1 12 GPIO_ACTIVE_LOW>;
+			label = "Non-existent LED 2";
+		};
+		led3: led_3 {
+			gpios = <&gpio0 5 GPIO_ACTIVE_LOW>;
+			label = "Orange LED 3";
+		};
+	};
+
+  inputs: inputs {
+    compatible = "gpio-keys";
+    tx_enable_sw: enable_sw {
+      gpios = <&gpio0 11 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+      label = "Enable switch for primary TX.";
+    };
+  };
+
+	nrf_radio_fem: radio_fem {
+		compatible = "skyworks,sky66112-11", "generic-fem-two-ctrl-pins";
+		ctx-gpios = <&gpio0 17 GPIO_ACTIVE_HIGH>;
+		crx-gpios = <&gpio0 19 GPIO_ACTIVE_HIGH>;
+		cps-gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
+		chl-gpios = <&gpio0 8 GPIO_ACTIVE_HIGH>;
+	};
+
+	aliases {
+		led0 = &led0;
+		led1 = &led1;
+		led2 = &led2;
+		led3 = &led3;
+	};
+};
+
+&gpiote {
+	status = "okay";
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+&uart0 {
+	compatible = "nordic,nrf-uarte";
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&uart0_default>;
+	pinctrl-1 = <&uart0_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+&uart1 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&uart1_default>;
+	pinctrl-1 = <&uart1_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		boot_partition: partition@0 {
+			label = "mcuboot";
+			reg = <0x0 0xc000>;
+		};
+		slot0_partition: partition@c000 {
+			label = "image-0";
+			reg = <0xc000 0x72000>;
+		};
+		slot1_partition: partition@7e000 {
+			label = "image-1";
+			reg = <0x7e000 0x72000>;
+		};
+		scratch_partition: partition@f0000 {
+			label = "image-scratch";
+			reg = <0xf0000 0xa000>;
+		};
+		storage_partition: partition@fa000 {
+			label = "storage";
+			reg = <0xfa000 0x6000>;
+		};
+	};
+};

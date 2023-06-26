@@ -1,0 +1,12 @@
+# Copyright (c) 2023 Nordic Semiconductor ASA
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_BT840XE_BREAKOUT
+
+config BOARD
+	default "bt840xe_breakout"
+
+config BT_CTLR
+   default BT
+
+endif
