@@ -41,6 +41,10 @@
       gpios = <&gpio0 11 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
       label = "Enable switch for primary TX.";
     };
+    general_sw: general_sw {
+      gpios = <&gpio0 14 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+      label = "General purpose GPIO.";
+    };
   };
 
 	nrf_radio_fem: radio_fem {
